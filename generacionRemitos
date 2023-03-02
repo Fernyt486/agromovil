@@ -1,0 +1,818 @@
+
+    $.jgrid.defaults.width = 780;
+    $.jgrid.defaults.responsive = true;
+    $.jgrid.defaults.styleUI = 'Bootstrap';
+    var callbackDefault = function () { $("#gridDispatches").trigger("reloadGrid", [{ current: true }]); };
+    var callbackDefaultSelected = function () { $("#gridDispatchesSelected").trigger("reloadGrid", [{ current: true }]); };
+    var company;
+    var workPlace;
+    var dateSinceDispatchField;
+    var dateUntilDispatchField;
+    var lotId;
+    var varietyId;
+    var storageCenterId;
+    var dispatchNumber;
+    var palletBarCode;
+    var conditionId;
+    var TotalNetWeight = 0;
+    var TotalGrossWeight = 0;
+    var lectura = "";
+    var dispatchBodySelect = [];
+    var productId;
+
+    $(function () {
+
+        var cleave = new Cleave('#remitoNumero', {
+            delimiter: '-',
+            blocks: [4, 10]
+        });
+
+        storageCenterId = '@ViewBag.ViewModel.StorageCenter';
+        Dispatches.HideSelectedStorageCenter();
+
+        $('#dateSinceDispatchField').datepicker({ changeYear: true, changeMonth: true });
+        $('#dateUntilDispatchField').datepicker({ changeYear: true, changeMonth: true });
+        Dispatches.LoadGrid();
+
+        $('#cb_gridDispatches').hide();
+
+        $('#dateSinceDispatchField').change(function () {
+            Dispatches.Filtrar();
+        });
+
+        $('#dateUntilDispatchField').change(function () {
+            Dispatches.Filtrar();
+        });
+
+        $('#storageCenterId').change(function () {
+            if (dispatchBodySelect.length > 0) {
+                var cartel = "Si cambia el centro de acopio se perderán los items del remito.- Desea continuar?";
+
+                LoadModalDynamic('cambiarCentroAcopio', ModalMessageDefault.TITLE_WARNING, null, null, cartel,
+                    [CreateActionModalButtonWithClass('Aceptar', 'Dispatches.CleanDetail()', 'btn btn-primary'),
+                        CreateActionModalButtonWithClass('Cancelar', 'Dispatches.CancelChangeStorage()', 'btn btn-default')], '#granContainer', '420px;');
+
+            }
+            else {
+                Dispatches.Filtrar();
+                CloseModal();
+            }
+        });
+
+        $('#conditionId').change(function () {
+            Dispatches.Filtrar();
+        });
+
+        $('#palletId').change(function () {
+            Dispatches.Filtrar();
+        });
+
+        $('#dispatchnumber').change(function () {
+            Dispatches.Filtrar();
+        });
+
+        $('#lotId').change(function () {
+            Dispatches.Filtrar();
+        });
+
+        $('#varietyId').change(function () {
+            Dispatches.Filtrar();
+        });
+        $('select').change(function () {
+            if ($('.tooltip').is(":visible"))
+                setTimeout(hideTooltips('btnSave'), 2000);
+        });
+
+
+        resizeGrid('#gridDispatches');
+        resizeGrid('#gridDispatchesSelected');
+    });
+
+    Dispatches = {
+        CalculateWeight: function () {
+            var pesoTarima = $('#pesoTarima').val();
+            var pesoContenedores = $('#pesoContenedores').val();
+            if (pesoTarima) {
+                if (pesoContenedores) {
+                    CalculateWeight($('#pesoBruto'), $('#pesoTarima'), $('#pesoContenedores'), $('#cantidad'), $('#pesoNeto'));
+                }
+            }
+        },
+        Scale: function () {
+            Scale($('#pesoBrutoWeights'), $('#pesoTarimaDispatch'), $('#pesoContenedores'), $('#cantidadDispatchField'), $('#pesoNeto'));
+        },
+        Cancel: function (nombre, id) {
+            CloseModalWithId(nombre);
+            var grid = $("#gridDispatches");
+            var rowKey = grid.getGridParam("selrow");
+            jQuery("#gridDispatches").setSelection(rowKey, false);
+        },
+        CancelChangeStorage: function () {
+            CloseModalWithId("cambiarCentroAcopio");
+            $('#storageCenterId').val(storageCenterId);
+        },
+        DeleteArray: function (id) {
+            dispatchBodySelect.forEach(deleteElements);
+            function deleteElements(element, index, array) {
+                if (element.id == id) {
+                    dispatchBodySelect.splice(index, 1);
+                    TotalNetWeight = parseFloat(TotalNetWeight - element.NetWeight);
+                    TotalGrossWeight = parseFloat(TotalGrossWeight - element.GrossWeight);
+                    $('#NetoTotal').html("<h5 class='media-heading'><strong>Neto Total: " + TotalNetWeight.toFixed(2) + "</string></h5>");
+                    $('#BrutoTotal').html("<h5 class='media-heading'><strong>Bruto Total: " + TotalGrossWeight.toFixed(2) + "</string></h5>");
+                }
+            }
+        },
+        SelectedGrid: function () {
+            dispatchBodySelect.forEach(selectedElements);
+            function selectedElements(element, index, array) {
+                var grid = $("#gridDispatches");
+                var rowArray = grid.jqGrid('getDataIDs');
+                for (i = 0, count = rowArray.length; i < count; i += 1) {
+                    if (rowArray[i] == element.id) {
+                        var selRowIds = grid.getGridParam("selarrrow");
+                        if ($.inArray(rowArray[i], selRowIds) < 0) {
+                            grid.jqGrid('setSelection', rowArray[i], true);
+                        }
+                    }
+                }
+            }
+        },
+        SaveWeights: function (nombre, id, selectedIDs) {
+            var id = $('#id').val(); dispatchNumber
+            var dispatchNumber = $('#dispatchNumberWeight').val();
+            var cantidad = $('#cantidadDispatchField').val();
+            var pesoBruto = parseFloat($('#pesoBrutoWeights').val().replace(',', '.'));
+            var pesoNeto = parseFloat($('#pesoNeto').val().replace(',', '.'));
+            var palletId = $('#palletIdWeigth').val();
+            var palletCode = $('#tarima').val();
+            var condition = $('#condition').val();
+            var conditionText = $('#condition option:selected').text();
+            var palletWeightProcesamiento = $('#pesoTarimaDeProcesamiento').val();
+            TotalNetWeight = parseFloat(TotalNetWeight + pesoNeto);
+            TotalGrossWeight = parseFloat(TotalGrossWeight + pesoBruto);
+            $('#NetoTotal').html("<h5 class='media-heading'><strong>Neto Total: " + TotalNetWeight.toFixed(2) + "</string></h5>");
+            $('#BrutoTotal').html("<h5 class='media-heading'><strong>Bruto Total: " + TotalGrossWeight.toFixed(2) + "</string></h5>");
+            if (palletId) {
+                if (condition && condition != -1) {
+                    if (cantidad) {
+                        if (pesoBruto > 0) {
+                            if (pesoNeto > 0) {
+                                var miObjeto = new Object();
+                                miObjeto.id = id;
+                                miObjeto.IdDispatchHead = dispatchNumber;
+                                miObjeto.QuantityContainer = cantidad;
+                                miObjeto.IdPallet = palletId;
+                                miObjeto.GrossWeight = pesoBruto;
+                                miObjeto.NetWeight = pesoNeto;
+                                miObjeto.CodePallet = palletCode;
+                                miObjeto.Condition = condition;
+                                miObjeto.ConditionText = conditionText;
+                                miObjeto.PalletWeightProcesamiento = palletWeightProcesamiento;
+                                Dispatches.DeleteArray(id);
+                                dispatchBodySelect.push(miObjeto);
+                                CloseModalWithId(nombre);
+                                $('#gridDispatchesSelectedGroup').show();
+                                DispatchesSelected.LoadGrid();
+                                resizeGrid('#gridDispatchesSelected');
+                                resizeGrid('#gridDispatches');
+                                DispatchesSelected.ReloadGrid();
+                                Dispatches.SelectedGrid();
+                            }
+                            else {
+                                ShowNotify("warning", "Advertencia", "El peso Neto no se ha calculado bien");
+                            }
+                        }
+                        else {
+                            ShowNotify("warning", "Advertencia", "Ingrese una Peso Bruto");
+                        }
+                    }
+                    else {
+                        ShowNotify("warning", "Advertencia", "Ingrese una Cantidad de Contenedores");
+                    }
+                }
+                else {
+                    ShowNotify("warning", "Advertencia", "Seleccione una Condición");
+                }
+            }
+            else
+            {
+                ShowNotify("warning", "Advertencia", "Ingrese una Tarima");
+            }
+        },
+        Filtrar: function () {
+            company = $('#companyCreateFieldMap').val();
+            workPlace = $('#workPlaceSelectFieldMap').val();
+            dateSinceDispatchField = $('#dateSinceDispatchField').val();
+            dateUntilDispatchField = $('#dateUntilDispatchField').val();
+            lotId = $('#lotId').val();
+            varietyId = $('#varietyId').val();
+            palletBarCode = $('#palletId').val();
+            storageCenterId = $('#storageCenterId').val();
+            dispatchNumber = $('#dispatchnumber').val();
+            conditionId = $('#conditionId').val();
+            productId = $('#productDispatch').val();
+            Dispatches.ReloadGrid();
+        },
+        HideSelectedStorageCenter: function () {
+            var storageCenterList = document.getElementById("storageCenter");
+            for (var i = 0; i < storageCenterList.length; i++) {
+                var val = storageCenterList.options[i].value;
+                storageCenterList.options[i].style.display = (val == storageCenterId) ? 'none' : 'list-item';
+            }
+        },
+        EliminarFiltros: function () {
+            $('#companyCreateFieldMap').val('-1');
+            $('#workPlaceSelectFieldMap').val('-1');
+            $('#lotId').val('-1');
+            $('#varietyId').val('-1');
+            $('#storageCenterId').val('-1');
+            $('#conditionId').val('-1');
+            $('#workPlaceSelectFieldMap').attr("disabled", true);
+            $('#lotId').attr("disabled", true);
+            $('#dispatchnumber').val("");
+            $('#dateSinceDispatchField').val("");
+            $('#dateUntilDispatchField').val("");
+            $('#palletId').val("");
+            Dispatches.Filtrar();
+        },
+        CleanDetail: function () {
+            $('#remitoNumero').val("");
+            $('#storageCenter').val(-1);
+            $('#dispatchId').val("");
+            $('#notes').val("");
+            $('#vehicle').val(-1);
+            $('#dtv').val("");
+            $('#empresaTransportista').val(-1);
+            $('#datosTransportista').val("");
+            $('#dtv').val("");
+            $('#dominioChasis').val("");
+            $('#dominioAcoplado').val("");
+            $('#workPlaceSelectFieldMapNew').val("");
+            $('#companySharedTransport').val("");
+            $('#dispatchSharedTransport').val("");
+            TotalNetWeight = 0;
+            TotalGrossWeight = 0;
+            $('#NetoTotal').html("<h5 class='media-heading'><strong>Neto Total: " + TotalNetWeight.toFixed(2) + "</string></h5>");
+            $('#BrutoTotal').html("<h5 class='media-heading'><strong>Bruto Total: " + TotalGrossWeight.toFixed(2) + "</string></h5>");
+            dispatchBodySelect = [];
+            $.jgrid.gridUnload("#gridDispatchesSelected");
+            Dispatches.Filtrar();
+            CloseModalWithId("cambiarCentroAcopio");
+        },
+        CalculateWeight: function () {
+            var grossWeight = $('#pesoBruto').val();
+            var palletWeight = $('#pesoTarima').val();
+            if (grossWeight != 0 && palletWeight != 0 && grossWeight > palletWeight) {
+                var netWeight = parseFloat(grossWeight - palletWeight).toFixed(2);
+                $('#pesoNeto').val(netWeight);
+            }
+            else
+            {
+                if (grossWeight != 0)
+                {
+                    $('#pesoNeto').val(0);
+                }
+                if (grossWeight <= palletWeight && grossWeight != 0)
+                {
+                    ShowNotify("warning", "Advertencia", "El Peso Bruto debe ser mayor que el peso de la Tarima");
+                    $('#pesoNeto').val(0);
+                }
+            }
+        },
+        Prepare: function (rowId, comesFromReader) {
+            var grid = $("#gridDispatches");
+            var id = grid.jqGrid('getCell', rowId, 'DispatchBody.Id');
+            var pallet;
+            var remitoNro;
+            var cantidad;
+            var grossWeight;
+            var netWeight;
+            var lot;
+            var variety;
+            var productId = $('#productDispatch').val();
+
+            var nombreModal = "";
+            if (rowId > 0)
+                nombreModal = rowId + 1;
+
+            var selectedIDs = Array();
+            selectedIDs = grid.getGridParam("selarrrow");
+
+            var seleccionado = false;
+            for (var i = 0; i < selectedIDs.length; i++) {
+                if (selectedIDs[i] == rowId)
+                    seleccionado = true;
+            }
+
+            var nombre = "modal-container" + nombreModal;
+            var accionAceptar = "Dispatches.SaveWeights('" + nombre + "'," + rowId + ',' + selectedIDs + ")";
+            var accionCancelar = "Dispatches.Cancel('" + nombre + "'," + rowId + ")";
+
+            if (id != 0 && id != -1) {
+                $.ajax({
+                    url: '@Url.Content("~/DispatchFields/GetDataBodyPartial")',
+                    data: $.param({ id: id }, true),
+                    datatype: 'json',
+                    type: 'post',
+                    success: function (data) {
+                        pallet = data.pallet;
+                        palletId = data.palletId;
+                        remitoNro = data.remitoNro;
+                        cantidad = data.cantidad;
+                        grossWeight = data.grossWeight;
+                        netWeight = data.netWeight;
+                        lot = data.lot;
+                        variety = data.variety;
+
+                        if (!seleccionado || comesFromReader) {
+                            LoadModalDynamic(nombre, 'Cargar Pesos Remitos de Campo', '@Url.Content("~/DispatchFields/Weights")',
+                                { id: id, dispatchNumber: remitoNro, cantidad: cantidad, grossWeight: grossWeight, netWeight: netWeight, pallet: pallet, palletId: palletId, lot: lot, variety: variety, productId: productId }, "",
+                                [CreateActionModalButtonWithClass('Aceptar', accionAceptar, 'btn btn-primary'),
+                                    CreateActionModalButtonWithClass('Cancelar', accionCancelar, 'btn btn-default')
+                                ], '#container', '950px');
+
+                        }
+                        else {
+                            Dispatches.DeleteArray(id);
+                            DispatchesSelected.ReloadGrid();
+                        }
+                    }
+                });
+            }
+        },
+        Save: function () {
+            var remitoNumero = $('#remitoNumero').val();
+            var storageCenter = $('#storageCenter').val();
+            var originStorageCenter = $('#storageCenterId').val();
+            var dispatchId = $('#dispatchId').val();
+            var notes = $('#notes').val();
+            var empresaTransportista = $('#empresaTransportista').val();
+            var datosTransportista = $('#datosTransportista').val();
+            var dtve = $('#dtv').val();
+            var dominioChasis = $('#dominioChasis').val();
+            var dominioAcoplado = $('#dominioAcoplado').val();
+            var workPlaceSelected = $('#workPlaceSelectFieldMap').val();
+            var intermediateWorkPlace = $('#workPlaceSelectFieldMapNew').val();
+            if (intermediateWorkPlace == "") { intermediateWorkPlace = 0; }
+            var companySharedTransport = $('#companySharedTransport').val();
+            var dispatchSharedTransport = $('#dispatchSharedTransport').val();
+            var workPlaceSelectFieldMapNewShare = $('#workPlaceSelectFieldMapNewShare').val();
+            if (workPlaceSelectFieldMapNewShare == "") { workPlaceSelectFieldMapNewShare = 0; }
+            var checkFieldMapNew = $('#checkFieldMapNew').prop('checked');
+            var checkSharedTransport = $('#checkSharedTransport').attr('checked');
+            //var ids = Dispatches.GetSelectedRows();
+
+            var grid = $("#gridDispatches");
+            var selectedIDs = grid.getGridParam("selarrrow");
+            var hayQueCargarPesos = false;
+            var remitos = dispatchBodySelect;
+            var objectSend = {
+                dispatchNumber: remitoNumero,
+                storageCenterId: storageCenter,
+                companyTransporting: empresaTransportista,
+                dataTransporting: datosTransportista,
+                dtve: dtve,
+                chasisDomain: dominioChasis,
+                coupleDomain: dominioAcoplado,
+                intermediateWorkPlace: intermediateWorkPlace,
+                dispatchSharedTransport: dispatchSharedTransport,
+                workPlaceSelected: workPlaceSelected,
+                workPlaceSelectFieldMapNewShare : workPlaceSelectFieldMapNewShare,
+                note: notes,
+                dispatchBody: dispatchBodySelect,
+                storageCenterOriginId : originStorageCenter
+            };
+                if (remitoNumero) {
+                    if (storageCenter && storageCenter != -1) {
+                        if (empresaTransportista != "") {
+                        if ((checkFieldMapNew == false) || (checkFieldMapNew && intermediateWorkPlace != 0)) {
+                            var securityToken = $('[name=__RequestVerificationToken]').val();
+
+                        $.ajax({
+                            url: '@Url.Content("~/Dispatches/Create")',
+                            contentType: 'application/json; charset=utf-8',
+                            type: 'post',
+                            data: JSON.stringify(objectSend),
+                            success: function (data) {
+                                //NotifyResponse(ToastMessage.getTitleCreate("Remito"), data);
+                                if (data.Success) {
+                                    ShowNotify("success", data.ResultMessage);
+                                    $('#dispatchToPrintId').val(data.Data);
+                                    var cartel = "¿Desea imprimir el Remito?";
+
+                                    LoadModalDynamic('printremito', ModalMessageDefault.TITLE_WARNING, null, null, cartel,
+                                        [CreateActionModalButtonWithClass('Aceptar', 'Dispatches.Print()', 'btn btn-primary'),
+                                            CreateActionModalButton('Cancelar', 'Dispatches.CancelDeleteButton()')], '#granContainer', '420px;');
+
+                                    Dispatches.ReloadGrid();
+                                    Dispatches.CleanDetail();
+                                }
+                                else {
+                                    ShowNotify("warning", data.ResultMessage);
+                                }
+                            }
+                            });
+                        }
+                        else {
+                            ShowNotify("warning", "Advertencia", "Debe seleccionar un destino intermedio");
+                            }
+                        }
+                        else {
+                            ShowNotify("warning", "Advertencia", "Debe seleccionar empresa transportista");
+                        }
+                    }
+                    else {
+                        ShowNotify("warning", "Advertencia", "Por favor seleccione un Centro de Acopio");
+                    }
+                }
+                else {
+                    ShowNotify("warning", "Advertencia", "Por favor ingrese el número de Remito");
+                }
+        },
+        CancelDeleteButton: function () {
+            CloseModalWithId("printremito");
+        },
+        OpenFilter: function () {
+            $('#filters').toggle();
+            $('#cleanFilters').toggle();
+        },
+        ReloadGrid: function () {
+            $("#gridDispatches").trigger("reloadGrid", [{ current: true }]);
+
+            //showTooltips("btnSave", "left", TooltipsMessage.TITLE_SAVE);
+            Dispatches.SelectedGrid();
+        },
+        Print: function () {
+            var dispatchId = $('#dispatchToPrintId').val();
+            if (dispatchId) {
+                window.open(ApplicationPath + 'Reports/PrintDispatch?dispatchId=' + dispatchId, '_blank');
+            }
+            CloseModalWithId("printremito");
+        },
+        DeleteDispatch: function () {
+            var dispatchId = $('#dispatchToPrintId').val();
+            if (dispatchId) {
+                window.open(ApplicationPath + 'Reports/PrintDispatch?dispatchId=' + dispatchId, '_blank');
+            }
+            CloseModal();
+        },
+        LoadGrid: function () {
+            productId = $('#productDispatch').val();
+            $("#gridDispatches").jqGrid({
+                url: '@Url.Content("~/Dispatches/Grid")',
+                postData: {
+                    company: function () { return company },
+                    workPlace: function () { return workPlace },
+                    dateSince: function () { return dateSinceDispatchField },
+                    dateUntil: function () { return dateUntilDispatchField },
+                    lot: function () { return lotId },
+                    variety: function () { return varietyId },
+                    pallet: function () { return palletBarCode },
+                    storageCenterId: function () { return storageCenterId },
+                    dispatchNumber: function () { return dispatchNumber },
+                    conditionId: function () { return conditionId },
+                    productId: function () { return productId }
+                },
+                datatype: "json",
+                mtype: 'post',
+                colModel: [
+                    { label: 'ID', name: 'DispatchBody.Id', width: 5, hidden: true, key: true },
+                    { label: 'REMITO', name: 'DispatchBody.DispatchHead.DispatchNumber', sorttype: 'string', width: 12 },
+                    { label: 'TARIMA', name: 'DispatchBody.Pallet.BarCode', sorttype: 'string', width: 12 },
+                    { label: 'FECHA DISPOSITIVO', name: 'DispatchBody.DispatchHead.ReceptionDate', sorttype: 'date', width: 12 },
+                    { label: 'FINCA', name: 'DispatchBody.FieldMap.Lot.WorkPlace.Name', sorttype: 'string', width: 12 },
+                    { label: 'LOTE', name: 'DispatchBody.FieldMap.Lot.Name', sorttype: 'string', width: 12 },
+                    { label: 'PRODUCTO', name: 'DispatchBody.FieldMap.Variety.Product.Name', sorttype: 'string', width: 10 },
+                    { label: 'VARIEDAD', name: 'DispatchBody.FieldMap.Variety.Name', sorttype: 'string', width: 10 },
+                    { label: 'CANTIDAD', name: 'DispatchBody.ReceptionQuantityContainer', sorttype: 'number', width: 8 },
+                    { label: 'PESO BRUTO', name: 'DispatchBody.ReceptionGrossWeight', sorttype: 'number', width: 10 },
+                    { label: 'PESO NETO', name: 'DispatchBody.ReceptionNetWeight', sorttype: 'number', width: 10 },
+                    { label: 'CONDICION', name: 'DispatchBody.Condition.Name', sorttype: 'string', width: 10 },
+                    { label: 'RECIBIDO POR', name: 'DispatchBody.ReceptionUser', sorttype: 'string', width: 4 },
+                    { label: 'VEHÍCULO', name: 'DispatchBody.DispatchHead.Vehicle.Name', sorttype: 'string', width: 10 },
+                    { label: 'SUPERVISOR', name: 'DispatchBody.DispatchHead.TaskMasterIdentificationNumber', sorttype: 'string', width: 10 },
+                    { label: 'CENTRO DE ACOPIO', name: 'DispatchBody.DispatchHead.StorageCenter.Id', sorttype: 'string', width: 10, hidden: true },
+                    { label: 'NOTAS', name: 'DispatchBody.DispatchHead.Note', sorttype: 'string', width: 10, hidden: true },
+                    { label: 'VEHICLE ID', name: 'DispatchBody.DispatchHead.Vehicle.Id', sorttype: 'string', width: 10, hidden: true },
+                    { label: 'CONDITION ID', name: 'DispatchBody.Condition.Id', sorttype: 'string', width: 10, hidden: true },
+                    { label: 'LOT ID', name: 'DispatchBody.FieldMap.Lot.Id', sorttype: 'string', width: 10, hidden: true },
+                    { label: 'VARIETY ID', name: 'DispatchBody.FieldMap.Variety.Id', sorttype: 'string', width: 10, hidden: true },
+                    { label: 'DISPATCH HEAD ID', name: 'DispatchBody.DispatchHead.Id', sorttype: 'string', width: 10, hidden: true },
+                    { label: 'PALLET ID', name: 'e.DispatchBody.Pallet.Id', sorttype: 'string', width: 10, hidden: true },
+                    { label: 'USUARIO CARGA', name: 'DispatchBody.UserName', sorttype: 'string', width: 10 },
+                    { label: 'FECHA CARGA', name: 'DispatchBody.Date', sorttype: 'date', width: 10 }
+                ],
+                loadonce: false,
+                multiSort: true,
+                multiselect: true,
+                autowidth: true,
+                width: null,
+                shrinkToFit: true,
+                height: 'auto',
+                rowNum: 10,
+                rowList: [10, 20, 30],
+                scrollrows: true,
+                sortname: '',
+                sortorder: '',
+                viewrecords: true,
+                pager: $('#pager'),
+                onCellSelect: function (rowid, iCol, cellcontent, e) {
+                    $('#dataDispatch').fadeOut(100);
+                    Dispatches.Prepare(rowid, false);
+                    $('#dataDispatch').fadeIn(100);
+                    LoadDispatchNumber();
+                    showTooltips("btnSave", "left", TooltipsMessage.TITLE_SAVE);////////////////
+                },
+                loadComplete: function () {
+                    Dispatches.SelectedGrid();
+                },
+                gridComplete: function () {
+                    Dispatches.SelectedGrid();
+                }
+            }).navGrid('#pager', { search: true, edit: false, add: false, del: false, refresh: true });
+        },
+        GetSelectedRows: function () {
+            var grid = $("#gridDispatches");
+            var rowKey = grid.getGridParam("selrow");
+            var result = new Array();
+
+            if (!rowKey) {
+                NoSelection();
+                return null;
+            }
+            else {
+                var selectedIDs = grid.getGridParam("selarrrow");
+                for (var i = 0; i < selectedIDs.length; i++) {
+                    result.push(selectedIDs[i]);
+                }
+                return result;
+            }
+        }
+    }
+
+    DispatchesSelected = {
+
+        Cancel: function (nombre, id) {
+            CloseModalWithId(nombre);
+            var grid = $("#gridDispatchesSelected");
+            var rowKey = grid.getGridParam("selrow");
+            jQuery("#gridDispatchesSelected").setSelection(rowKey, false);
+        },
+        ReloadGrid: function () {
+            $("#gridDispatchesSelected").trigger("reloadGrid", [{ current: true }]);
+
+        },
+        LoadGrid: function () {
+            $("#gridDispatchesSelected").jqGrid({
+                data: dispatchBodySelect,
+                datatype: "local",
+                colModel: [
+                    { label: 'ID TARJA', name: 'id', width: 5, key: true },
+                    { label: 'REMITO', name: 'IdDispatchHead', sorttype: 'string', width: 12 },
+                    { label: 'CANTIDAD', name: 'QuantityContainer', sorttype: 'string', width: 12 },
+                    { label: 'PESO BRUTO', name: 'GrossWeight', sorttype: 'string', width: 12 },
+                    { label: 'PESO NETO', name: 'NetWeight', sorttype: 'string', width: 12 },
+                    { label: 'TARIMA', name: 'CodePallet', sorttype: 'string', width: 12 },
+                    { label: 'CONDICIÓN', name: 'ConditionText', sorttype: 'string', width: 12 }
+                ],
+                loadonce: false,
+                multiSort: true,
+                multiselect: false,
+                autowidth: true,
+                width: null,
+                shrinkToFit: true,
+                height: '300',
+                rowNum: 10,
+                rowList: [10, 20, 30],
+                scrollrows: true,
+                sortname: '',
+                sortorder: '',
+                viewrecords: true,
+                pager: $('#pagerSelected'),
+                onCellSelect: function (rowid, iCol, cellcontent, e) {
+                }
+            }).navGrid('#pagerSelected', { search: true, edit: false, add: false, del: false, refresh: true });
+        },
+        CleanGrid: function () {
+            dispatchBodySelect = [];
+            $.jgrid.gridUnload("#gridDispatchesSelected");
+        },
+        GetSelectedRows: function () {
+            var grid = $("#gridDispatchesSelected");
+            var rowKey = grid.getGridParam("selrow");
+            var result = new Array();
+
+            if (!rowKey) {
+                NoSelection();
+                return null;
+            }
+            else {
+                var selectedIDs = grid.getGridParam("selarrrow");
+                for (var i = 0; i < selectedIDs.length; i++) {
+                    result.push(selectedIDs[i]);
+                }
+                return result;
+
+            }
+        }
+    }
+
+    function SelectedCompanyFieldMap(ddlObject) {
+        var selectedValue = ddlObject.value;
+        $('#workPlaceSelectFieldMap').prop("disabled", false);
+        $('#workPlaceSelectFieldMap').html('');
+        productId = $('#idProduct').val();
+        $.ajax({
+            url: '@Url.Content("~/WorkPlaceSites/GetWorkPlacesWithUserRestriction")',
+            data: $.param({
+                company: selectedValue,
+                productId: productId
+            }, true),
+            datatype: 'json',
+            type: 'post',
+            success: function (data) {
+                var html = '<option value="-1">SELECCIONE</option>';
+                $.each(data, function () {
+                    html += '<option value="' + this.WorkPlace.Id + '">' + this.WorkPlace.Name + '</option>';
+                });
+                $('#workPlaceSelectFieldMap').html(html);
+                Dispatches.Filtrar();
+                $('#remitoNumero').val("");
+
+            }
+        });
+    }
+
+    function SelectedWorkPlaceFieldMap(ddlObject)
+    {
+        LoadLot();
+        LoadDispatchNumber();
+        Dispatches.Filtrar();
+    }
+
+    function LoadLot() {
+        var company = $('#companyCreateFieldMap').val();
+        var workPlace = $('#workPlaceSelectFieldMap').val();
+        $('#lotId').prop("disabled", false);
+        $('#lotId').html('');
+        productId = $('#productDispatch').val();
+
+        if (company && company != -1) {
+            if (workPlace && workPlace != -1) {
+                $.ajax({
+                    url: '@Url.Content("~/Lots/GetLots")',
+                    data: $.param({
+                        workPlace: workPlace,
+                        productId: productId
+                    }, true),
+                    datatype: 'json',
+                    type: 'post',
+                    success: function (data) {
+                        var html = '<option value="-1">SEL. LOTE</option>';
+                        $.each(data, function () {
+                            //style = "font-size: 12px;margin-top: 5px;"
+                            html += '<option value="' + this.Id + '">' + this.Name + '</option>';
+                        });
+                        $('#lotId').html(html);
+                    }
+                });
+            }
+            else {
+                var html = '<option value="-1">SEL. LOTE</option>';
+                $('#lotId').html(html);
+            }
+        }
+    }
+
+    function LoadDispatchNumber() {
+        $('#remitoNumero').val("");
+        var company = $('#companyCreateFieldMap').val();
+        var workPlace = $('#workPlaceSelectFieldMap').val();
+        $('#lotId').prop("disabled", false);
+        $('#lotId').html('');
+
+        if (company && company != -1) {
+            if (workPlace && workPlace != -1) {
+                $.ajax({
+                    url: '@Url.Content("~/PointOfSale/GetNextNumber")',
+                    data: $.param({
+                        workPlace: workPlace
+                    }, true),
+                    datatype: 'json',
+                    type: 'post',
+                    success: function (data) {
+                        if (data.Data != null) {
+                            $('#remitoNumero').val(data.Data.PointOfSale.Code + "-" + data.Data.NextNumber);
+                        }
+                        else{
+                            NotifyResponse(ToastMessage.getTitleCreate("Remito"), data);
+                        }
+                    }
+                });
+            }
+            else {
+                $('#remitoNumero').val("");
+            }
+        }
+    }
+
+    function LoadVariety() {
+        var lotId = $('#lotId').val();
+        $('#varietyId').prop("disabled", false);
+        $('#varietyId').html('');
+        if (lotId && lotId != -1)
+        {
+            $.ajax({
+                url: '@Url.Content("~/Varieties/GetVarietiesByLot")',
+                data: $.param({ lot: lotId }, true),
+                datatype: 'json',
+                type: 'post',
+                success: function (data) {
+                    var html = '<option value="-1">SELECCIONE</option>';
+                    $.each(data, function () {
+                        html += '<option style="font-size: 12px;margin-top: 5px;" value="' + this.Id + '">' + this.Name + '</option>';
+                    });
+                    $('#varietyId').html(html);
+                }
+            });
+        }
+    }
+
+    function SelectedCompanyFieldMapNew(ddlObject) {
+        var selectedValue = ddlObject.value;
+        $('#workPlaceSelectFieldMapNew').html('');
+        var productId = $('#productDispatch').val();
+        //GetWorkPlacesWithUserRestriction
+        $.ajax({
+            url: '@Url.Content("~/WorkPlaceSites/GetAllUsedInfieldMapsBy")',
+            data: $.param({
+                company: selectedValue,
+                productId: productId
+            }, true),
+            datatype: 'json',
+            type: 'post',
+            success: function (data) {
+                var html = '<option value="-1">SELECCIONE</option>';
+                $.each(data, function () {
+                    html += '<option value="' + this.WorkPlace.Id + '">' + this.WorkPlace.Name + '</option>';
+                });
+                $('#workPlaceSelectFieldMapNew').html(html);
+                $('#workPlaceSelectFieldMapNew').removeAttr('disabled');
+            }
+        });
+    }
+
+    function SelectedCompanyFieldMapNewShare(ddlObject) {
+        var selectedValue = ddlObject.value;
+        $('#workPlaceSelectFieldMapNewShare').html('');
+        var productId = $('#productDispatch').val();
+        //GetWorkPlacesWithUserRestriction
+        $.ajax({
+            url: '@Url.Content("~/WorkPlaceSites/GetAllUsedInfieldMapsBy")',
+            data: $.param({
+                company: selectedValue,
+                productId: productId
+            }, true),
+            datatype: 'json',
+            type: 'post',
+            success: function (data) {
+                var html = '<option value="-1">SELECCIONE</option>';
+                $.each(data, function () {
+                    html += '<option value="' + this.WorkPlace.Id + '">' + this.WorkPlace.Name + '</option>';
+                });
+                $('#workPlaceSelectFieldMapNewShare').html(html);
+                $('#workPlaceSelectFieldMapNewShare').removeAttr('disabled');
+            }
+        });
+    }
+
+    $('#checkFieldMapNew').change(function () {
+        if (!$('#checkFieldMapNew').is(':checked')) {
+            $('#companyCreateFieldMapNew').val("");
+            $('#workPlaceSelectFieldMapNew').val("");
+            $('#companyCreateFieldMapNew').prop('disabled', true);
+            $('#workPlaceSelectFieldMapNew').prop('disabled', true);
+        }
+        else {
+            $('#companyCreateFieldMapNew').removeAttr('disabled');
+        }
+    });
+
+    $('#checkSharedTransport').change(function () {
+        if (!$('#checkSharedTransport').is(':checked')) {
+            $('#companySharedTransport').val("");
+            $('#workPlaceSelectFieldMapNewShare').val("-1");
+            $('#dispatchSharedTransport').val("");
+            $('#companySharedTransport').prop('disabled', true);
+            $('#dispatchSharedTransport').prop('disabled', true);
+            $('#workPlaceSelectFieldMapNewShare').prop('disabled', true);
+        }
+        else {
+            $('#companySharedTransport').removeAttr('disabled');
+            $('#dispatchSharedTransport').removeAttr('disabled');
+            $('#workPlaceSelectFieldMapNewShare').removeAttr('disabled');
+
+        }
+    });
+
